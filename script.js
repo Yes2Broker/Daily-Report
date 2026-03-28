@@ -14,6 +14,7 @@ const futureVisitDoneContainer = document.getElementById("futureVisitDoneContain
 
 let futureVisitsData = [];       // all future visits from backend
 let futureVisitSelections = [];  // selected dropdown rows
+let isLoadingVisits = false;
 
 
 let scheduledLocked = false;
@@ -122,18 +123,24 @@ const scriptURL =
 const nameSelect = form.querySelector('[name="name"]');
 
 nameSelect.addEventListener("change", async () => {
+
+  isLoadingVisits = true;     // 🔥 START LOADING
+  btn.disabled = true;        // 🔒 disable submit
+
   const name = nameSelect.value;
 
-  todayVisitActions = [];   // ⭐ RESET STORED ACTIONS
+  todayVisitActions = [];
   todayActionContainer.innerHTML = "Loading...";
+
   if (!scheduledLocked) {
     manualScheduledContainer.innerHTML = "";
     visitScheduledCount.value = "";
   }
 
-
   if (!name) {
     todayActionContainer.innerHTML = "";
+    isLoadingVisits = false;
+    btn.disabled = false;
     return;
   }
 
@@ -146,17 +153,21 @@ nameSelect.addEventListener("change", async () => {
     if (!data.visits || !data.visits.length) {
       todayActionContainer.innerHTML =
         "<p style='font-size:13px;color:#64748b'>No visits today</p>";
-      return;
+    } else {
+      todayActionContainer.innerHTML = "";
+      data.visits.forEach(v => renderVisitRow(v, name));
     }
-
-    todayActionContainer.innerHTML = "";
-    data.visits.forEach(v => renderVisitRow(v, name));
 
   } catch (err) {
     console.error("Today visits fetch error:", err);
     todayActionContainer.innerHTML =
       "<p style='font-size:13px;color:red'>Failed to load visits</p>";
   }
+
+  isLoadingVisits = false;    // ✅ END LOADING
+  btn.disabled = false;       // ✅ enable submit
+
+  form.querySelector('[name="name"]').setCustomValidity(""); // reset error
 });
 
 
@@ -203,6 +214,22 @@ function formatFutureDate(dateStr) {
 // ================= SUBMIT =================
 form.addEventListener("submit", async (e) => {
 
+  // 🚫 BLOCK SUBMIT WHILE LOADING
+  if (isLoadingVisits) {
+    const nameField = form.querySelector('[name="name"]');
+    nameField.setCustomValidity("Please wait, visits are still loading");
+    nameField.reportValidity();
+    return;
+  }
+
+  if (!form.checkValidity()) {
+    return;
+  }
+
+  e.preventDefault();
+
+
+
   if (!form.checkValidity()) {
     return; // Let browser show native validation
   }
@@ -215,9 +242,21 @@ form.addEventListener("submit", async (e) => {
 
   if (!validateNumbers(formData)) return;
 
-  // 🔥 AUTO SAVE SCHEDULED VISITS
-  const saved = await autoSaveScheduledIfNeeded();
-  if (!saved) return;
+  // 🚫 FORCE USER TO CLICK SAVE FIRST
+  if (!scheduledLocked) {
+
+    const schNames = document.querySelectorAll(".schName");
+
+    if (schNames.length > 0) {
+
+      const firstInput = schNames[0];
+
+      firstInput.setCustomValidity("Please save scheduled visits first");
+      firstInput.reportValidity();   // 🔥 shows browser popup
+
+      return;
+    }
+  }
 
   // ===== Collect SCHEDULED visits (manual inputs) =====
   const schNames = [...document.querySelectorAll(".schName")].map(i => i.value);
